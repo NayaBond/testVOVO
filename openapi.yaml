@@ -1,0 +1,162 @@
+openapi: 3.0.3
+info:
+  title: testVOVO — Products API
+  version: 1.0.0
+  description: |
+    OpenAPI спецификация для эндпоинта списка продуктов.
+    Основано на текущей реализации Laravel 10:
+    - Контроллер: `App\Http\Controllers\Api\ProductController@index`
+    - Валидация: `App\Http\Requests\ProductSearchRequest`
+    - Ресурс ответа: `App\Http\Resources\ProductResource`
+servers:
+  - url: http://localhost
+    description: Локальная среда (php artisan serve)
+  - url: http://localhost/api
+    description: База API (если проксируете /api как корень)
+tags:
+  - name: Products
+    description: Операции с продуктами
+paths:
+  /api/products:
+    get:
+      tags: [Products]
+      summary: Список продуктов с фильтрами и сортировкой
+      description: |
+        Возвращает пагинированный список продуктов. Поддерживает фильтрацию по имени, цене, категории, наличию и минимальному рейтингу.
+        Сортировка: newest (по умолч.), price_asc, price_desc, rating_desc.
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 255 }
+          description: Поиск подстроки в названии товара
+        - in: query
+          name: price_from
+          schema: { type: number, format: float, minimum: 0 }
+          description: Минимальная цена
+        - in: query
+          name: price_to
+          schema: { type: number, format: float, minimum: 0 }
+          description: Максимальная цена (>= price_from)
+        - in: query
+          name: category_id
+          schema: { type: integer, minimum: 1 }
+          description: ID категории (должен существовать)
+        - in: query
+          name: in_stock
+          schema: { type: boolean }
+          description: Наличие на складе
+        - in: query
+          name: rating_from
+          schema: { type: number, format: float, minimum: 0, maximum: 5 }
+          description: Минимальный рейтинг (0..5)
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [newest, price_asc, price_desc, rating_desc]
+            default: newest
+          description: Поле сортировки
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 15
+          description: Кол-во элементов на страницу
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+          description: Номер страницы (>=1)
+      responses:
+        '200':
+          description: Успешный ответ с пагинацией
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+                  meta:
+                    allOf:
+                      - $ref: '#/components/schemas/PaginationMeta'
+                      - type: object
+                        properties:
+                          filters_applied:
+                            type: array
+                            items: { type: string }
+                          sort_applied:
+                            type: string
+                            enum: [newest, price_asc, price_desc, rating_desc]
+                          available_sorts:
+                            type: array
+                            items:
+                              type: string
+                              enum: [newest, price_asc, price_desc, rating_desc]
+                  links:
+                    $ref: '#/components/schemas/PaginationLinks'
+        '422':
+          description: Ошибка валидации запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '500':
+          description: Внутренняя ошибка сервера
+components:
+  schemas:
+    Product:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: Смартфон X }
+        price: { type: number, format: float, example: 999.99 }
+        category_id: { type: integer, example: 2 }
+        in_stock: { type: boolean, example: true }
+        rating: { type: number, format: float, example: 4.5 }
+        created_at: { type: string, format: date-time, example: '2026-01-16 12:34:56' }
+        updated_at: { type: string, format: date-time, example: '2026-01-16 12:34:56' }
+        category:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/Category'
+      required: [id, name, price, category_id, in_stock, rating]
+    Category:
+      type: object
+      properties:
+        id: { type: integer, example: 2 }
+        name: { type: string, example: Смартфоны }
+      required: [id, name]
+    PaginationLinks:
+      type: object
+      properties:
+        first: { type: string, nullable: true }
+        last: { type: string, nullable: true }
+        prev: { type: string, nullable: true }
+        next: { type: string, nullable: true }
+    PaginationMeta:
+      type: object
+      properties:
+        current_page: { type: integer }
+        from: { type: integer, nullable: true }
+        last_page: { type: integer }
+        path: { type: string }
+        per_page: { type: integer }
+        to: { type: integer, nullable: true }
+        total: { type: integer }
+    ValidationError:
+      type: object
+      properties:
+        message: { type: string, example: The given data was invalid. }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+      example:
+        message: The given data was invalid.
+        errors:
+          price_to: ["The price to must be greater than or equal to price from."]
